@@ -28,10 +28,16 @@ def build(store, batch_id: str) -> materialize.Snapshot:
 
 
 def rebuild(store, batch_id: str) -> materialize.Snapshot:
-    """可重复调用：同一 as_of 重算快照，行数不变、合计不变。"""
+    """可重复调用：同一 as_of 重算快照，行数不变、合计不变。
+
+    已擦除批次重算时沿用当前擦除版本，新快照行不会被误标成「未擦除」。
+    """
+    batch = store.get_batch(batch_id) or {}
     snapshot = build(store, batch_id)
     totals = snapshot.totals()
-    store.replace_snapshot(batch_id, snapshot.rows, totals)
+    version = int(batch.get("redaction_version") or 0)
+    store.replace_snapshot(batch_id, snapshot.rows, totals,
+                           redaction_version=version)
     return snapshot
 
 

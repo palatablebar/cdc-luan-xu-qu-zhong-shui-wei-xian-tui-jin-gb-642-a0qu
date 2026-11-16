@@ -16,6 +16,8 @@
 - 水位线 = 已应用事件最大 `event_time` − 10 分钟，严格小于才记迟到，迟到**仍然应用**；
 - 快照按 `event_time ≤ as_of` 物化，`as_of` 之后的事件留待定窗口，一并给出合计；
 - 批次键 = 输入摘要 + 规则版本 + 参数，同一输入重跑命中批次、不新增行；
+- 一次性擦除姓名/手机/地址原值，换成不可还原但稳定关联的标记，事件、隔离与快照
+  三层同时生效，结构列、金额与四账不动；
 - 导出事件证据、隔离区、冲突表、快照 CSV/JSON 与运行清单（含 `run_id` 与每个输入的 sha256）。
 
 ## 功能模块
@@ -29,6 +31,7 @@
 | M5 快照物化 | 按水位物化快照，看待定键 | `POST /api/snapshot`、页面 `/snapshot` | `apply.py` `materialize.py` |
 | M6 批次续跑 | 查历史、看清单、续跑与重跑 | `GET /api/batches`、页面 `/batches` | `state.py` `resume.py` `history.py` |
 | M7 审计导出 | 下载证据行、隔离、冲突、快照与清单 | `GET /api/export/*` | `csv_out.py` `json_out.py` `manifest_out.py` |
+| M8 敏感值擦除 | 擦除姓名/手机/地址原值，留稳定标记 | `POST /api/redactions`、页面 `/redactions` | `redaction.py` `plan.py` `service.py` |
 
 模块内统一是 `handler.py`（入口）+ `service.py`（编排）+ 两个纯规则/读写文件；
 定义写在 `docs/DATA-DICTIONARY.md`，坑与测试映射写在 `docs/DEPTH.md`。
@@ -58,7 +61,9 @@ docker compose down -v             # 连数据库卷一起删
 2. `/events` 按分类筛选，看每行的行号引用与原因码；
 3. `/conflicts` 看冲突分组、隔离区与优先级表，导出隔离 CSV；
 4. `/snapshot` 点「物化」，看活跃 / 墓碑 / 待定与三条对账；
-5. `/batches` 看 `run_id`、输入 sha256、阶段耗时，导出运行清单。
+5. `/batches` 看 `run_id`、输入 sha256、阶段耗时，导出运行清单；
+6. `/redactions` 点「擦除客户信息」：原值换成 `[REDACTED:…]`，再回事件流、隔离区、
+   快照与导出复核——行数、金额、四账不变，同一值在各处的标记一致。
 
 ## API 与页面
 
@@ -74,22 +79,26 @@ docker compose down -v             # 连数据库卷一起删
 | GET | `/api/snapshot` / POST `/api/snapshot` | 读快照 / 重新物化 |
 | GET | `/api/batches`、`/api/batches/{id}`、`/api/batches/{id}/manifest` | 批次与清单 |
 | POST | `/api/batches/{id}/resume` | 续跑 |
+| POST | `/api/redactions` | 擦除敏感原值（同一请求幂等） |
+| GET | `/api/redactions` | 擦除历史、版本与标记 |
+| POST | `/api/redactions/{id}/resume` | 中断/失败的擦除续跑 |
 | GET | `/api/export/{events,quarantine,conflicts,snapshot}.csv` | 证据导出 |
 | GET | `/api/export/{snapshot,manifest}.json` | 快照与运行清单 |
 
-页面共 6 个：`/`、`/events`、`/schema`、`/conflicts`、`/snapshot`、`/batches`。
+页面共 7 个：`/`、`/events`、`/schema`、`/conflicts`、`/snapshot`、`/batches`、`/redactions`。
 
 ## 目录
 
 ```text
 app/
-  main.py config.py errors.py reasons.py manifest.py store.py web.py bootstrap.py
-  modules/m1_events/ … m7_export/        # 每模块 handler + service + 2 个规则文件
-  templates/                             # base + 6 页
+  main.py config.py errors.py reasons.py manifest.py store.py web.py bootstrap.py redaction.py
+  modules/m1_events/ … m7_export/ m8_redaction/   # 每模块 handler + service + 规则文件
+  templates/                             # base + 7 页
   static/                                # theme / layout / components + 3 个 js
 docs/  DEPTH.md  DATA-DICTIONARY.md  RUNBOOK.md
-sample_data/  events_main.jsonl  events_v1_gb.csv  events_late.jsonl  events_clean.jsonl  schema_contract.json
-tests/  test_m1_events.py … test_m7_export.py  test_e2e.py  test_invariants.py  fixtures/
+sample_data/  events_main.jsonl  events_v1_gb.csv  events_late.jsonl  events_clean.jsonl
+              events_pii.jsonl  schema_contract.json
+tests/  test_m1_events.py … test_m8_redaction.py  test_e2e.py  test_invariants.py  fixtures/
 ```
 
 ## 已知不覆盖

@@ -21,6 +21,7 @@ class RawRow:
     error: str | None = None
     note: str = ""
     seq: int = 0
+    columns: list[str] = field(default_factory=list)
 
     @property
     def row_ref(self) -> str:
@@ -162,10 +163,12 @@ def _read_csv(name: str, text: str) -> tuple[list[RawRow], list[str]]:
             rows.append(RawRow(file=name, lineno=lineno, text=",".join(cells),
                                raw={"__cells": cells},
                                error="E_COLUMN_COUNT",
-                               note=f"列数 {len(cells)}，表头 {width}"))
+                               note=f"列数 {len(cells)}，表头 {width}",
+                               columns=list(header)))
             continue
         raw = {header[i]: cells[i] for i in range(min(width, len(cells)))}
-        rows.append(RawRow(file=name, lineno=lineno, text=",".join(cells), raw=raw))
+        rows.append(RawRow(file=name, lineno=lineno, text=",".join(cells), raw=raw,
+                           columns=list(header)))
     return rows, codes
 
 

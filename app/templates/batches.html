@@ -64,10 +64,12 @@
         <dt>最大事件</dt><dd>{{ batch.max_event_time | localdt }}</dd>
         <dt>创建</dt><dd>{{ batch.created_at | localdt }}</dd>
         <dt>完成</dt><dd>{{ batch.finished_at | localdt }}</dd>
+        <dt>擦除版本</dt><dd>v{{ batch.redaction_version or 0 }}</dd>
       </dl>
       <div class="actions" style="margin-top:10px">
         <button class="btn btn-primary" id="btn-resume" type="button" data-batch="{{ batch.batch_id }}">续跑</button>
         <a class="btn" href="/api/batches/{{ batch.batch_id }}/manifest">运行清单</a>
+        <a class="btn" href="/redactions">擦除</a>
       </div>
       <p class="hint" id="resume-hint">{{ plan.reason }}</p>
       {% else %}

@@ -139,6 +139,25 @@ REASONS = {
     "X_EMPTY_SELECTION": _r(
         "X_EMPTY_SELECTION", WARN, "export",
         "导出选择为空", "先跑一次采信再导出"),
+    # ---- M8 敏感值擦除 ----
+    "R_REDACTED": _r(
+        "R_REDACTED", INFO, "redaction",
+        "敏感原值已替换为稳定关联标记", "原值不可还原；用标记核对同一值的多处出现"),
+    "R_REDACT_REPLAY": _r(
+        "R_REDACT_REPLAY", INFO, "redaction",
+        "同一擦除请求已完成，复用原结果", "幂等：版本号与计数都不变"),
+    "R_REDACT_RESUMED": _r(
+        "R_REDACT_RESUMED", WARN, "redaction",
+        "擦除中断后从断点续跑", "复用同一条擦除记录与版本，不重复计数"),
+    "R_REDACT_VERIFY_FAILED": _r(
+        "R_REDACT_VERIFY_FAILED", ERROR, "redaction",
+        "擦除校验未通过，保留旧版结果", "看 problems 字段，修复后重跑或续跑"),
+    "R_REDACT_COMMIT_FAILED": _r(
+        "R_REDACT_COMMIT_FAILED", ERROR, "redaction",
+        "擦除落库失败，已保留旧版结果", "查磁盘与权限后重跑同一请求或续跑"),
+    "R_BATCH_NOT_DONE": _r(
+        "R_BATCH_NOT_DONE", WARN, "redaction",
+        "批次尚未完成，不能擦除", "先把该批次续跑到完成"),
 }
 
 

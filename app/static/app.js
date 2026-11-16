@@ -112,6 +112,45 @@
       return;
     }
 
+    if (target.id === "btn-redact") {
+      busy(target, true);
+      request("/api/redactions", {})
+        .then(function (data) {
+          var stats = data.stats || {};
+          toast(data.idempotent_replay
+            ? "同一擦除已生效 v" + data.version + "，未重复计数"
+            : "擦除完成 v" + data.version + " · 改行 " + (stats.changed || 0));
+          window.setTimeout(function () {
+            window.location.reload();
+          }, 650);
+        })
+        .catch(function (err) {
+          toast(err.message, true);
+          busy(target, false);
+        });
+      return;
+    }
+
+    if (target.classList.contains("btn-resume-redact")) {
+      var redactionId = target.getAttribute("data-redaction");
+      if (!redactionId) return;
+      busy(target, true);
+      request("/api/redactions/" + encodeURIComponent(redactionId) + "/resume", {})
+        .then(function (data) {
+          toast(data.idempotent_replay
+            ? "擦除 v" + data.version + " 已生效"
+            : "擦除续跑完成 v" + data.version);
+          window.setTimeout(function () {
+            window.location.reload();
+          }, 650);
+        })
+        .catch(function (err) {
+          toast(err.message, true);
+          busy(target, false);
+        });
+      return;
+    }
+
     if (target.id === "btn-preview") {
       var input = document.getElementById("preview-input");
       var state = document.getElementById("preview-state");

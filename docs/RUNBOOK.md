@@ -73,3 +73,32 @@ python -m pytest -q
 - `conflicts.csv`：3 行，含两条证据行引用；
 - `snapshot.csv` / `snapshot.json`：18 键，活跃 16、墓碑 2；
 - `manifest.json`：`run_id`、每个输入的 sha256、阶段耗时、四账。
+
+## 7 敏感值擦除
+
+```bash
+BASE=http://127.0.0.1:18201
+curl -s -X POST $BASE/api/redactions -H 'content-type: application/json' -d '{}' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["version"], d["stats"])'
+curl -s $BASE/api/redactions | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["current_version"], len(d["redactions"]))'
+```
+
+判定看数字：
+
+- `stats.cells` = 本次替换的敏感单元格数，`stats.values` = 去重后的标记数；
+- `idempotent_replay=true` 表示同一擦除重跑，版本号与统计都不变；
+- 擦除后 `events.csv` / `quarantine.csv` / `snapshot.csv` / `manifest.json` 均无原值，
+  但行数、`金额`、四账与擦除前逐项相同。
+
+失败处置：
+
+| 现象 | 原因码 | 处置 |
+|---|---|---|
+| 擦除返回 409 | `R_REDACT_COMMIT_FAILED` | 落库失败，旧版仍在；查磁盘/权限后重跑同一请求或点「续跑」 |
+| 擦除记录 `失败 / failed` | — | 暂存校验未通过；看 `problems`，修复后重跑 |
+| 页面仍有原值 | — | 检查该值是否有敏感列名或强模式；孤立姓名需导出端补列名 |
+| 两次擦除产生两个版本 | — | 策略版本或密钥变了；属预期，旧标记仍可关联 |
+
+密钥：默认在数据目录生成 `redaction.key`（0600），可用
+`CDCWATER_REDACTION_KEY`（64 位十六进制）或 `CDCWATER_REDACTION_KEY_FILE`
+指定。换密钥后同一原值会得到不同标记，跨版本关联会断，按需保留旧密钥。

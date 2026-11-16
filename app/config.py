@@ -24,6 +24,10 @@ RULE_VERSION = "cdcwater/1.0.0"
 DECIMAL_QUANT = Decimal("0.01")
 MONEY_UNIT = "元"
 
+# 擦除密钥：只用于派生稳定标记，绝不写进数据行或导出文件
+REDACTION_KEY_ENV = "CDCWATER_REDACTION_KEY"
+REDACTION_KEY_FILE_ENV = "CDCWATER_REDACTION_KEY_FILE"
+
 # 迟到窗口：水位线 = 已应用事件最大 event_time − 该窗口
 LATE_WINDOW_MINUTES = 10
 
@@ -37,6 +41,17 @@ STAGE_LABELS = {
     "export": "导出",
 }
 STAGE_FLOW = "采信 → 契约 → 去重冲突 → 水位迟到 → 快照 → 导出"
+
+# 擦除是批次级后置动作，有独立阶段，不混进采信阶段账
+REDACT_STAGES = ("prepare", "staged", "verified", "committed")
+REDACT_STAGE_LABELS = {
+    "prepare": "准备",
+    "staged": "暂存",
+    "verified": "校验",
+    "committed": "落库",
+    "done": "完成",
+    "failed": "失败",
+}
 
 # 编码回退链：先按声明尝试，再按严格顺序逐个试；gb18030 是 gbk/gb2312 的超集
 ENCODING_CHAIN = ("utf-8", "gb18030")
@@ -98,6 +113,8 @@ SOURCES = {
     "main": ("events_main.jsonl",),
     "v1_csv": ("events_v1_gb.csv",),
     "late": ("events_late.jsonl",),
+    # 含客户姓名/手机/地址的样例，单独选来源，不并入 all
+    "pii": ("events_pii.jsonl",),
 }
 SOURCE_ORDER = ("events_main.jsonl", "events_v1_gb.csv", "events_late.jsonl")
 SOURCE_LABELS = {
@@ -105,6 +122,7 @@ SOURCE_LABELS = {
     "main": "主文件 events_main.jsonl",
     "v1_csv": "旧列名 events_v1_gb.csv",
     "late": "迟到补丁 events_late.jsonl",
+    "pii": "含客户资料 events_pii.jsonl",
 }
 
 CSV_COLUMNS = ("table", "pk", "version", "op", "event_time", "schema",
@@ -124,6 +142,8 @@ class Settings:
     late_window_minutes: int = LATE_WINDOW_MINUTES
     seed_on_start: bool = True
     export_dir: str = str(PROJECT_ROOT / "var" / "export")
+    redaction_key: str | None = None
+    redaction_key_file: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -137,7 +157,9 @@ class Settings:
         seed = os.getenv("CDCWATER_SEED")
         seed_on_start = base.seed_on_start if seed is None else seed.strip() not in ("0", "false", "no")
         return replace(cls(), db_path=db_path, sample_dir=sample_dir,
-                       late_window_minutes=minutes, seed_on_start=seed_on_start)
+                       late_window_minutes=minutes, seed_on_start=seed_on_start,
+                       redaction_key=os.getenv(REDACTION_KEY_ENV) or None,
+                       redaction_key_file=os.getenv(REDACTION_KEY_FILE_ENV) or None)
 
     @property
     def late_window(self) -> dt.timedelta:
@@ -146,3 +168,9 @@ class Settings:
     @property
     def data_dir(self) -> Path:
         return Path(self.db_path).resolve().parent
+
+    @property
+    def redaction_key_path(self) -> Path:
+        if self.redaction_key_file:
+            return Path(self.redaction_key_file)
+        return self.data_dir / "redaction.key"

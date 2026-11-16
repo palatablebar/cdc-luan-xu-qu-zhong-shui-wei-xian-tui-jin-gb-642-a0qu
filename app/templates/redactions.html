@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h1>敏感值擦除</h1>
+    <p class="panel-sub">
+      当前版本 v{{ redaction_data.current_version | num }}
+      · {{ redaction_data.redactions | length }} 次擦除
+      · 策略 {{ policy_version }}
+    </p>
+  </div>
+  <div class="panel-body">
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-redact" type="button"
+              {% if not batch %}disabled{% endif %}>擦除客户信息</button>
+      <span class="hint">把敏感原值换成 <code class="mono">{{ token_prefix }}…]</code>
+        稳定标记；行、金额、对账关系不变</span>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>擦除阶段</h2>
+    <p class="panel-sub">{{ stages | length }} 步 · 中断可从断点续跑</p>
+  </div>
+  <div class="panel-body tight">
+    <div class="table-wrap">
+      <table class="grid">
+        <thead><tr><th class="num">#</th><th>阶段</th><th>说明</th></tr></thead>
+        <tbody>
+          {% for stage in stages %}
+          <tr>
+            <td class="num">{{ loop.index }}</td>
+            <td class="mono">{{ stage }}</td>
+            <td>{{ stage_labels[stage] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>擦除记录</h2>
+    <p class="panel-sub">{{ redaction_data.redactions | length }} 条</p>
+  </div>
+  <div class="panel-body tight">
+    <div class="table-wrap">
+      <table class="grid" data-sortable>
+        <thead>
+          <tr>
+            <th>擦除号</th><th class="num">版本</th><th>状态</th><th>阶段</th>
+            <th class="num">改行</th><th class="num">替换值</th><th class="num">标记</th>
+            <th>请求时间</th><th>完成时间</th><th>说明</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in redaction_data.redactions %}
+          <tr>
+            <td class="mono ellipsis" title="{{ row.redaction_id }}">{{ row.redaction_id }}</td>
+            <td class="num">{{ row.version }}</td>
+            <td>
+              <span class="balance {% if row.status != 'done' %}is-bad{% endif %}">
+                {{ "完成" if row.status == "done" else ("运行中" if row.status == "running" else "失败") }}
+              </span>
+            </td>
+            <td>{{ row.stage }}</td>
+            <td class="num">{{ row.stats.changed | num }}</td>
+            <td class="num">{{ row.stats.values | num }}</td>
+            <td class="num">{{ row.stats.cells | num }}</td>
+            <td class="mono nowrap">{{ row.requested_at | localdt }}</td>
+            <td class="mono nowrap">{{ row.finished_at | localdt }}</td>
+            <td class="ellipsis" title="{{ row.detail }}">{{ row.detail or '—' }}</td>
+            <td>
+              {% if row.resumable %}
+              <button class="btn btn-ghost btn-resume-redact" type="button"
+                      data-redaction="{{ row.redaction_id }}">续跑</button>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not redaction_data.redactions %}<p class="empty">还没有擦除记录。</p>{% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>关联标记</h2>
+    <p class="panel-sub">{{ redaction_data.marks | length }} 个 · 不可还原，跨表跨批次稳定</p>
+  </div>
+  <div class="panel-body tight">
+    <div class="table-wrap">
+      <table class="grid" data-sortable>
+        <thead><tr><th>表</th><th>标记</th><th>行号引用</th><th class="num">到达序号</th></tr></thead>
+        <tbody>
+          {% for mark in redaction_data.marks %}
+          <tr>
+            <td>{{ mark.table_name }}</td>
+            <td class="mono">{{ mark.token }}</td>
+            <td class="mono nowrap">{{ mark.row_ref }}</td>
+            <td class="num">{{ mark.seq }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not redaction_data.marks %}<p class="empty">还没有被替换的标记。</p>{% endif %}
+  </div>
+</section>
+{% endblock %}

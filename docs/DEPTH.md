@@ -1,6 +1,6 @@
 # 深度登记 cdcwater（CDC 乱序去重与水位线推进）
 
-- 规模：中型（7 个功能模块 / 7 个页面 / 79 条测试）
+- 规模：中型（8 个功能模块 / 8 个页面 / 99 条测试 / 11 个测试文件）
 - 核心规则一：**版本序折叠 + 墓碑**——每个 `(table, pk)` 按 `version` 升序应用，`delete` 写墓碑；
   同键同版本出现两种内容整组不应用（`C_VERSION_CONFLICT`），删除之后到达的低版本 upsert
   不复活（`C_TOMBSTONE_RESURRECT`），删除之前到达的低版本照常应用后被覆盖。
@@ -22,6 +22,7 @@
 | M5 快照物化 | 按水位物化快照，看待定键与三条对账 | POST /api/snapshot、页面 /snapshot | `app/modules/m5_snapshot/apply.py` `app/modules/m5_snapshot/materialize.py` `app/modules/m5_snapshot/service.py` | `tests/test_m5_snapshot.py` |
 | M6 批次续跑 | 查历史、看运行清单、续跑与重跑 | GET /api/batches、POST /api/batches/{id}/resume、页面 /batches | `app/modules/m6_batches/state.py` `app/modules/m6_batches/resume.py` `app/modules/m6_batches/history.py` `app/modules/m6_batches/service.py` | `tests/test_m6_batches.py` |
 | M7 审计导出 | 下载证据行、隔离、冲突、快照与清单 | GET /api/export/* | `app/modules/m7_export/csv_out.py` `app/modules/m7_export/json_out.py` `app/modules/m7_export/manifest_out.py` `app/modules/m7_export/service.py` | `tests/test_m7_export.py` |
+| M8 敏感值擦除 | 擦除姓名/手机/地址原值，留稳定标记 | POST /api/redactions、GET /api/redactions、页面 /redactions | `app/redaction.py` `app/modules/m8_redaction/plan.py` `app/modules/m8_redaction/service.py` | `tests/test_m8_redaction.py` |
 
 端到端：`tests/test_e2e.py` 覆盖「样例 → 采信 → 归一 → 去重冲突 → 水位 → 快照 → 导出 → 页面」，
 含 4xx 失败输入与幂等重跑；`tests/test_invariants.py` 覆盖行账、键账、金额、幂等、迟到互补。
@@ -41,6 +42,9 @@
 | TRAP-19 | 一条事件同时像「重复」又像「冲突」，坏行还互相重复 | 按代码书写顺序覆盖，结果随遍历顺序变 | 优先级 `quarantine > conflict > duplicate > apply`，各桶由集合运算得出 | `app/modules/m3_dedup/service.py` | `tests/test_m3_dedup.py::test_conflict_beats_duplicate`、`tests/test_m3_dedup.py::test_priority_independent_of_input_order` |
 | TRAP-23 | 事件 `event_time` 恰好等于水位线 / 恰好等于 `as_of` | 两端都算，重复计入或漏计 | 迟到用半开 `[水位线, +inf)`；快照含 `as_of`、待定窗口 `(as_of, +inf)` 半开 | `app/modules/m4_watermark/watermark.py`、`app/modules/m5_snapshot/materialize.py` | `tests/test_m4_watermark.py::test_boundary_equal_watermark_is_not_late`、`tests/test_m5_snapshot.py::test_boundary_event_at_as_of_included_once` |
 | TRAP-26 | 拿上一轮旧导出再跑一次（最大事件 06:00 < 已持久化水位 08:52） | 无条件覆盖，水位回退、快照变旧 | 陈旧批次直接 409 `C_STALE_BATCH`，已落库结果不动 | `app/modules/m6_batches/resume.py`、`app/modules/m6_batches/state.py` | `tests/test_m6_batches.py::test_stale_input_rejected` |
+| TRAP-31 | 历史导出把姓名/手机/地址写进了事件原文与隔离证据 | 整笔删证据会连订单、金额和对账一起丢；只删原文又会留下可反推的裸哈希 | 不删行，只换成按值派生的 HMAC 稳定标记；结构列、金额、四账不动 | `app/redaction.py`、`app/modules/m8_redaction/service.py` | `tests/test_m8_redaction.py::test_structural_columns_and_totals_are_preserved`、`::test_same_value_gets_same_marker_across_rows` |
+| TRAP-32 | 同一擦除点了两次 / 中断后重跑 | 重复计数、版本号乱跳，或丢记录 | 请求摘要幂等；中断复用同一条记录与版本，暂存按带密钥指纹续跑 | `app/modules/m8_redaction/plan.py`、`app/modules/m8_redaction/service.py` | `tests/test_m8_redaction.py::test_same_redaction_rerun_does_not_double_count`、`::test_interrupted_redaction_resumes_without_new_record` |
+| TRAP-33 | 擦除中途落库失败 | 半批已擦、半批原值，证据自相矛盾 | 暂存 → 校验 → 单事务提交；失败整体回滚并保留旧版 | `app/store.py::apply_redaction` | `tests/test_m8_redaction.py::test_interrupted_redaction_resumes_without_new_record`、`::test_verify_failure_keeps_old_version` |
 
 ## 对账规则
 
@@ -68,7 +72,9 @@
   - `tests/test_invariants.py::test_amount_conservation_is_exact`（金额守恒，Decimal 精确）；
   - `tests/test_invariants.py::test_idempotent_rerun_keeps_rows_and_totals`（幂等重跑）；
   - `tests/test_m4_watermark.py::test_watermark_monotonic`（水位单调）；
-  - `tests/test_m5_snapshot.py::test_rebuild_is_idempotent`（物化可重复）。
+  - `tests/test_m5_snapshot.py::test_rebuild_is_idempotent`（物化可重复）；
+  - `tests/test_m8_redaction.py::test_redaction_removes_pii_from_all_surfaces`（擦除后全表面无原值）；
+  - `tests/test_m8_redaction.py::test_structural_columns_and_totals_are_preserved`（擦除不动结构列与合计）。
 
 ## 已知不覆盖
 
@@ -77,3 +83,5 @@
   状态一起纳入，属于下一期。
 - 事务边界未建模：同一事务的多条变更不保证原子可见。
 - 中文数字、货币符号（`￥`）不在金额归一范围内，遇到直接按类型错误隔离。
+- 擦除只覆盖库内已采信的证据与快照，不回收 SQLite 空闲页；磁盘级彻底清除需
+  `VACUUM` 或整卷重建。没有键名、没有强模式、也不像地址的孤立姓名识别不了。

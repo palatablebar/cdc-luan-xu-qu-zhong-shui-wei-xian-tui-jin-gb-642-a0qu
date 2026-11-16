@@ -19,9 +19,10 @@ from .modules.m4_watermark import handler as m4_handler
 from .modules.m5_snapshot import handler as m5_handler
 from .modules.m6_batches import handler as m6_handler
 from .modules.m7_export import handler as m7_handler
+from .modules.m8_redaction import handler as m8_handler
 
 MODULES = (m1_handler, m2_handler, m3_handler, m4_handler, m5_handler,
-           m6_handler, m7_handler)
+           m6_handler, m7_handler, m8_handler)
 
 
 def create_app(settings: config.Settings | None = None,
@@ -65,6 +66,7 @@ def create_app(settings: config.Settings | None = None,
             "events": int(totals.get("raw_lines", 0) or 0),
             "applied": int(totals.get("applied", 0) or 0),
             "snapshot_keys": int(totals.get("snapshot_keys", 0) or 0),
+            "redaction_version": int(batch.get("redaction_version") or 0) if batch else 0,
         }
 
     @app.exception_handler(KeyError)

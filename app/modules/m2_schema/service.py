@@ -36,6 +36,7 @@ class Norm:
     raw_value: str = ""
     detail: str = ""
     raw_text: str = ""
+    columns: list[str] = field(default_factory=list)
     late: bool = False
     behind_seconds: int = 0
     row_class: str = ""
@@ -63,7 +64,8 @@ class Norm:
             "reason_code": self.reason_code or (self.errors[0] if self.errors else None),
             "field": self.bad_field or None, "raw_value": self.raw_value or None,
             "detail": self.detail or None, "late": self.late,
-            "flags": self.codes, "raw_text": self.raw_text[:400],
+            "flags": self.codes, "raw_text": self.raw_text,
+            "columns": self.columns,
         }
 
 
@@ -88,7 +90,7 @@ def _fail(norm: Norm, code: str, *, field_name: str = "", raw_value: str = "",
 
 def normalize_row(row: RawRow) -> Norm:
     norm = Norm(row_ref=row.row_ref, file=row.file, lineno=row.lineno, seq=row.seq,
-                raw_text=row.text)
+                raw_text=row.text, columns=list(row.columns or []))
     if row.error:
         _fail(norm, row.error, detail=row.note or reasons.label(row.error))
         norm.detail = row.note or reasons.label(row.error)

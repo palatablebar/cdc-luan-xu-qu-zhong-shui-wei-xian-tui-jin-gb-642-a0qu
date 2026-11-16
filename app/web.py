@@ -26,6 +26,7 @@ NAV = (
     ("/conflicts", "冲突隔离", "conflicts"),
     ("/snapshot", "快照", "snapshot"),
     ("/batches", "批次", "batches"),
+    ("/redactions", "擦除", "redactions"),
 )
 
 ROW_CLASS_LABELS = {
@@ -95,7 +96,7 @@ def setup(app) -> None:
         fields=config.FIELDS,
         aliases=config.ALIASES,
         source_labels=config.SOURCE_LABELS,
-        source_keys=("all", "main", "v1_csv", "late"),
+        source_keys=("all", "main", "v1_csv", "late", "pii"),
         money_unit=config.MONEY_UNIT,
         window_note=config.WINDOW_NOTE,
         late_window=config.LATE_WINDOW_MINUTES,
